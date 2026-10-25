@@ -1,84 +1,71 @@
-# Coolify Deployment Guide — Server 129.121.169.195
+# Coolify Deployment Guide — port.awtpx.in (Server 129.121.169.195)
 
-This repository is **100% Coolify & Docker deployment-ready** with a multi-stage standalone `Dockerfile`, `docker-compose.yml`, and an automated `/api/health` healthcheck endpoint.
+This repository is **100% Coolify & Docker deployment-ready** for your server and domain with automated Traefik SSL/TLS termination, Next.js standalone containerization, and an automated healthcheck.
 
 ---
 
-## 🖥️ Server Details
+## 🖥️ Server & Domain Configuration
 
 * **Server IP:** `129.121.169.195`
+* **Domain Name:** `https://port.awtpx.in`
+* **Direct Server URL:** `http://129.121.169.195:3000`
 * **Git Repository:** `https://github.com/awtpx/port.dev.git`
-* **Default Branch:** `main`
-* **Internal Application Port:** `3000`
-* **Health Check URL:** `/api/health`
+* **Branch:** `main`
+* **Container Port:** `3000`
+* **Health Check Endpoint:** `http://127.0.0.1:3000/api/health`
 
 ---
 
-## 🚀 Step-by-Step Deployment in Coolify
+## 🌐 1. DNS Setup (In your DNS Manager for awtpx.in)
 
-### Step 1: Open your Coolify Dashboard
+Ensure you have an **A Record** pointing to your server IP:
+
+| Type | Name / Host | Target / Value | TTL | Proxy Status |
+| :--- | :--- | :--- | :--- | :--- |
+| **A** | `port` | `129.121.169.195` | `Auto` or `300` | DNS only (or Cloudflare proxied) |
+
+---
+
+## 🚀 2. Coolify Application Settings
+
+### Step 1: Open Coolify Dashboard
 Access your Coolify control panel at:
 ```
 http://129.121.169.195:8000
 ```
-*(or your configured Coolify domain/port)*
 
----
+### Step 2: Configure Domain
+In your Application &rarr; **General** &rarr; **Domains**:
+Enter:
+```
+https://port.awtpx.in
+```
+*(Coolify & Traefik will automatically provision a free Let's Encrypt SSL certificate!)*
 
-### Step 2: Create a New Application
-1. In the sidebar, select **Projects** (or default project).
-2. Click **+ New Resource**.
-3. Select **Public Repository** (or **GitHub Private App** if private).
-4. Enter the repository details:
-   * **Repository URL:** `https://github.com/awtpx/port.dev.git`
-   * **Branch:** `main`
-   * **Build Pack:** **Dockerfile** *(auto-detected)*
+### Step 3: Ports Exposes
+* Set **Ports Exposes** to: `3000`
 
----
-
-### Step 3: Configure Ports & Domains
-In the Application Settings:
-* **Ports Exposes:** `3000`
-* **Domains:**
-  * To access directly via server IP:
-    ```
-    http://129.121.169.195:3000
-    ```
-  * Or assign your custom domain with automatic SSL (e.g., `https://port.yourdomain.com`).
-
----
-
-### Step 4: Configure Environment Variables
-Under the **Environment Variables** tab, add:
+### Step 4: Environment Variables (In Coolify UI)
+In the **Environment Variables** tab in Coolify, add:
 
 ```env
 NODE_ENV=production
 PORT=3000
 HOSTNAME=0.0.0.0
-NEXT_PUBLIC_BASE_URL=http://129.121.169.195:3000
+NEXT_PUBLIC_BASE_URL=https://port.awtpx.in
 
-# Optional: Higher rate limits for GitHub API (60 req/hr unauth vs 5,000 req/hr auth)
-GITHUB_TOKEN=
+# Paste your GitHub Personal Access Token
+GITHUB_TOKEN=your_github_token_here
 
-# Optional: Groq API key for Llama 3.3 AI bio generator (fallback generator activates if omitted)
-GROQ_API_KEY=
+# Paste your Groq Llama 3.3 API Key
+GROQ_API_KEY=your_groq_api_key_here
 ```
 
----
+### Step 5: Health Check
+* **Path:** `/api/health`
+* **Expected Status Code:** `200`
+* Our Dockerfile runs: `curl -f http://127.0.0.1:3000/api/health || exit 1`
 
-### Step 5: Health Check (Automated)
-Coolify will automatically monitor the built-in health endpoint:
-* **Healthcheck Path:** `/api/health`
-* **Expected Status:** `200`
-
----
-
-### Step 6: Deploy
+### Step 6: Deploy / Redeploy
 Click **Deploy**!
-Coolify will:
-1. Pull the latest code from `https://github.com/awtpx/port.dev.git`.
-2. Build the lightweight production container using our multi-stage Dockerfile.
-3. Verify `/api/health` returns status `200`.
-4. Route traffic through Traefik proxy.
-
-Your application will be live at `http://129.121.169.195:3000`!
+Coolify will build the standalone image, verify health, and route traffic from `https://port.awtpx.in` directly to the application!

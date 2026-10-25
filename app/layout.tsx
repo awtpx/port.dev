@@ -27,7 +27,7 @@ export const viewport: Viewport = {
   themeColor: "#2563EB",
 };
 
-const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://port.dev";
+const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://port.awtpx.in";
 
 export const metadata: Metadata = {
   metadataBase: new URL(baseUrl),

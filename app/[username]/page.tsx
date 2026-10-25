@@ -30,7 +30,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   }
 
   const seo = await generateSEO(profile);
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://port.dev";
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://port.awtpx.in";
   const title = `${profile.name || profile.username} (@${profile.username}) — Developer Portfolio | port`;
   const description =
     profile.bio ||

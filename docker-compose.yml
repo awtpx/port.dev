@@ -14,7 +14,7 @@ services:
       - NODE_ENV=production
       - PORT=3000
       - HOSTNAME=0.0.0.0
-      - NEXT_PUBLIC_BASE_URL=${NEXT_PUBLIC_BASE_URL:-http://129.121.169.195:3000}
+      - NEXT_PUBLIC_BASE_URL=${NEXT_PUBLIC_BASE_URL:-https://port.awtpx.in}
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}
       - GROQ_API_KEY=${GROQ_API_KEY:-}
     healthcheck:
