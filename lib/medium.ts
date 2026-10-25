@@ -79,7 +79,7 @@ export async function getMediumPosts(username: string): Promise<MediumPost[]> {
       let thumbnail = extractThumbnail(content);
       if (!thumbnail) {
         // Fallback clean tech banner
-        thumbnail = "https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=600&auto=format&fit=crop&q=80";
+        thumbnail = "";
       }
 
       let categories: string[] = [];
