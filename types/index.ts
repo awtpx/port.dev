@@ -2,7 +2,7 @@ export interface GitHubProfile {
   username: string;
   name: string;
   avatar_url: string;
-  bio: string;
+  bio: string | null;
   location: string;
   blog: string;
   company: string;
@@ -16,6 +16,10 @@ export interface GitHubProfile {
   seo?: { title: string; description: string; keywords: string };
   issues_closed: number;
   pull_requests_merged: number;
+  annual_contributions: number;
+  total_stars: number;
+  total_forks: number;
+  profile_readme?: string;
 }
 
 export interface RankedProject {
@@ -31,6 +35,7 @@ export interface RankedProject {
   is_pinned: boolean;
   score: number;
   updated_at: string;
+  readme_snippet?: string;
 }
 
 export interface MediumPost {
@@ -53,6 +58,5 @@ export interface Contributor {
 export interface PortfolioData {
   profile: GitHubProfile;
   projects: RankedProject[];
-  mediumPosts: MediumPost[];
   topLanguages: { language: string; count: number; percentage: number }[];
 }

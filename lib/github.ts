@@ -4,7 +4,7 @@ function getHeaders() {
   const token = process.env.GITHUB_TOKEN;
   const headers: Record<string, string> = {
     Accept: "application/vnd.github.v3+json",
-    "User-Agent": "devb-io-clone",
+    "User-Agent": "port-dev-portfolio",
   };
   if (token && token.trim() !== "") {
     headers.Authorization = `Bearer ${token.trim()}`;
@@ -12,8 +12,22 @@ function getHeaders() {
   return headers;
 }
 
+interface RawGitHubRepo {
+  id: number;
+  name: string;
+  description: string | null;
+  html_url: string;
+  homepage: string | null;
+  stargazers_count: number;
+  forks_count: number;
+  language: string | null;
+  topics?: string[];
+  fork: boolean;
+  updated_at: string;
+}
+
 /**
- * 1. getGitHubUser: Fetch user details from GitHub REST API
+ * 1. getGitHubUser: Fetch 100% authentic user details from GitHub REST API and scraped public stats
  */
 export async function getGitHubUser(username: string): Promise<GitHubProfile | null> {
   const cleanUsername = username.trim().toLowerCase();
@@ -26,12 +40,16 @@ export async function getGitHubUser(username: string): Promise<GitHubProfile | n
     if (!res.ok) {
       if (res.status === 404) return null;
       console.warn(`GitHub API returned status ${res.status} for user: ${cleanUsername}`);
-      // Return a graceful mock profile if rate limited so preview still works
-      return getMockProfile(cleanUsername);
+      return null;
     }
 
     const data = await res.json();
-    const stats = await getContributionStats(cleanUsername);
+
+    // Fetch real verified contribution counts and profile readme in parallel
+    const [stats, profileReadme] = await Promise.all([
+      getVerifiedStats(cleanUsername),
+      getProfileReadme(cleanUsername),
+    ]);
 
     const social_accounts: { provider: string; url: string }[] = [];
     if (data.twitter_username) {
@@ -56,11 +74,11 @@ export async function getGitHubUser(username: string): Promise<GitHubProfile | n
       username: data.login || cleanUsername,
       name: data.name || data.login || cleanUsername,
       avatar_url: data.avatar_url || `https://github.com/${cleanUsername}.png`,
-      bio: data.bio || "Full-stack developer building open source software and modern web applications.",
-      location: data.location || "Earth",
-      blog: data.blog || "",
-      company: data.company || "",
-      twitter_username: data.twitter_username || "",
+      bio: data.bio ? data.bio.trim() : null, // Genuine bio from GitHub or null
+      location: data.location ? data.location.trim() : "",
+      blog: data.blog ? data.blog.trim() : "",
+      company: data.company ? data.company.trim() : "",
+      twitter_username: data.twitter_username ? data.twitter_username.trim() : "",
       public_repos: data.public_repos ?? 0,
       followers: data.followers ?? 0,
       following: data.following ?? 0,
@@ -68,10 +86,14 @@ export async function getGitHubUser(username: string): Promise<GitHubProfile | n
       social_accounts,
       issues_closed: stats.issues_closed,
       pull_requests_merged: stats.pull_requests_merged,
+      annual_contributions: stats.annual_contributions,
+      total_stars: 0,
+      total_forks: 0,
+      profile_readme: profileReadme,
     };
   } catch (error) {
     console.error("Error fetching GitHub user:", error);
-    return getMockProfile(cleanUsername);
+    return null;
   }
 }
 
@@ -120,44 +142,20 @@ export async function getPinnedRepos(username: string): Promise<string[]> {
   }
 }
 
-interface RawGitHubRepo {
-  id: number;
-  name: string;
-  description: string | null;
-  html_url: string;
-  homepage: string | null;
-  stargazers_count: number;
-  forks_count: number;
-  language: string | null;
-  topics?: string[];
-  fork: boolean;
-  updated_at: string;
-}
-
-interface RawGitHubEvent {
-  type: string;
-  payload?: {
-    action?: string;
-    pull_request?: {
-      merged?: boolean;
-    };
-  };
-}
-
 /**
- * 3. getRankedProjects: Fetches all public repos, cross references pinned repos, computes ranking score
+ * 3. getRankedProjects: Ingests all available public repos, fetches top repo READMEs, and ranks them
  */
 export async function getRankedProjects(username: string): Promise<RankedProject[]> {
   const cleanUsername = username.trim().toLowerCase();
   try {
     const pinnedRepoNames = await getPinnedRepos(cleanUsername);
 
-    // Fetch all available repositories (paginated up to 300 repos)
+    // Fetch all available public repositories
     const allRepos: RawGitHubRepo[] = [];
     let page = 1;
     let hasMore = true;
 
-    while (hasMore && page <= 3) {
+    while (hasMore && page <= 5) {
       const res = await fetch(
         `https://api.github.com/users/${cleanUsername}/repos?per_page=100&page=${page}&sort=updated`,
         {
@@ -167,7 +165,6 @@ export async function getRankedProjects(username: string): Promise<RankedProject
       );
 
       if (!res.ok) {
-        if (allRepos.length === 0) return getMockRankedProjects(cleanUsername);
         break;
       }
 
@@ -186,7 +183,7 @@ export async function getRankedProjects(username: string): Promise<RankedProject
     }
 
     if (allRepos.length === 0) {
-      return getMockRankedProjects(cleanUsername);
+      return [];
     }
 
     const now = Date.now();
@@ -199,22 +196,22 @@ export async function getRankedProjects(username: string): Promise<RankedProject
       if (isPinned) score += 50;
       if (repo.description) score += 5;
       if (repo.homepage) score += 10;
-      if (!repo.fork) score += 20; // Original work bonus
+      if (!repo.fork) score += 20;
 
       const updatedAtTime = new Date(repo.updated_at).getTime();
       if (updatedAtTime >= ninetyDaysAgo) {
-        score += 15; // Recency bonus
+        score += 15;
       }
 
       return {
         id: repo.id,
         name: repo.name,
-        description: repo.description || "Open source project built with modern web technologies.",
+        description: repo.description ? repo.description.trim() : "",
         html_url: repo.html_url,
         homepage: repo.homepage || null,
         stargazers_count: repo.stargazers_count || 0,
         forks_count: repo.forks_count || 0,
-        language: repo.language || "TypeScript",
+        language: repo.language || "Code",
         topics: Array.isArray(repo.topics) ? repo.topics : [],
         is_pinned: isPinned,
         score,
@@ -223,67 +220,147 @@ export async function getRankedProjects(username: string): Promise<RankedProject
     });
 
     ranked.sort((a, b) => b.score - a.score);
-    // Return all available repositories
+
+    // Fetch real README snippets for the top 3 standout repositories to empower the AI summary
+    const topReposToScrape = ranked.slice(0, 3);
+    await Promise.all(
+      topReposToScrape.map(async (repo) => {
+        const snippet = await getRepoReadmeSnippet(cleanUsername, repo.name);
+        if (snippet) {
+          repo.readme_snippet = snippet;
+        }
+      })
+    );
+
     return ranked;
   } catch (err) {
     console.error("Error ranking projects:", err);
-    return getMockRankedProjects(cleanUsername);
+    return [];
   }
 }
 
 /**
- * 4. getContributionStats: Fetches /users/${username}/events to count PRs merged & issues closed
+ * 4. getVerifiedStats: Scrapes authentic PR counts, closed issues, and real annual contribution counts
  */
-export async function getContributionStats(
+export async function getVerifiedStats(
   username: string
-): Promise<{ issues_closed: number; pull_requests_merged: number }> {
-  try {
-    const res = await fetch(`https://api.github.com/users/${username}/events?per_page=100`, {
-      headers: getHeaders(),
+): Promise<{ issues_closed: number; pull_requests_merged: number; annual_contributions: number }> {
+  const cleanUsername = username.trim().toLowerCase();
+
+  const [prCount, issueCount, contribCount] = await Promise.all([
+    // Real merged PRs count from GitHub search API
+    fetch(
+      `https://api.github.com/search/issues?q=author:${cleanUsername}+type:pr+is:merged`,
+      { headers: getHeaders(), next: { revalidate: 3600 } }
+    )
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => (typeof d?.total_count === "number" ? d.total_count : 0))
+      .catch(() => 0),
+
+    // Real closed issues count from GitHub search API
+    fetch(
+      `https://api.github.com/search/issues?q=author:${cleanUsername}+type:issue+is:closed`,
+      { headers: getHeaders(), next: { revalidate: 3600 } }
+    )
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => (typeof d?.total_count === "number" ? d.total_count : 0))
+      .catch(() => 0),
+
+    // Real scraped annual contributions count from GitHub profile contributions HTML
+    fetch(`https://github.com/users/${cleanUsername}/contributions`, {
+      headers: { "User-Agent": "port-dev-portfolio" },
       next: { revalidate: 3600 },
-    });
-
-    if (!res.ok) {
-      return { issues_closed: 14, pull_requests_merged: 38 };
-    }
-
-    const events: RawGitHubEvent[] = await res.json();
-    if (!Array.isArray(events)) {
-      return { issues_closed: 14, pull_requests_merged: 38 };
-    }
-
-    let mergedPRs = 0;
-    let closedIssues = 0;
-
-    for (const ev of events) {
-      if (ev.type === "PullRequestEvent") {
-        if (ev.payload?.action === "closed" && ev.payload?.pull_request?.merged) {
-          mergedPRs++;
+    })
+      .then((r) => (r.ok ? r.text() : ""))
+      .then((html) => {
+        const match = html.match(/<h2[^>]*>\s*([\d,]+)\s*contributions\s*in the last year/i);
+        if (match && match[1]) {
+          return parseInt(match[1].replace(/,/g, ""), 10) || 0;
         }
-      } else if (ev.type === "IssuesEvent") {
-        if (ev.payload?.action === "closed") {
-          closedIssues++;
-        }
-      }
-    }
+        return 0;
+      })
+      .catch(() => 0),
+  ]);
 
-    // If active user events show low numbers because of 90-day event window, provide realistic baselines
-    return {
-      pull_requests_merged: Math.max(mergedPRs, 24),
-      issues_closed: Math.max(closedIssues, 12),
-    };
+  return {
+    pull_requests_merged: prCount,
+    issues_closed: issueCount,
+    annual_contributions: contribCount,
+  };
+}
+
+/**
+ * 5. getProfileReadme: Scrapes the user's special profile README (${username}/${username}) if it exists
+ */
+export async function getProfileReadme(username: string): Promise<string> {
+  const cleanUsername = username.trim().toLowerCase();
+  try {
+    const res = await fetch(
+      `https://api.github.com/repos/${cleanUsername}/${cleanUsername}/readme`,
+      { headers: getHeaders(), next: { revalidate: 3600 } }
+    );
+    if (!res.ok) return "";
+
+    const data = await res.json();
+    if (data.content && data.encoding === "base64") {
+      const decoded = Buffer.from(data.content, "base64").toString("utf-8");
+      return cleanMarkdown(decoded).substring(0, 1000);
+    }
+    return "";
   } catch {
-    return { issues_closed: 18, pull_requests_merged: 42 };
+    return "";
   }
 }
 
 /**
- * 5. Calculate language breakdown from ranked projects
+ * 6. getRepoReadmeSnippet: Scrapes a repository's README to extract its real purpose and description
+ */
+export async function getRepoReadmeSnippet(
+  username: string,
+  repoName: string
+): Promise<string> {
+  const cleanUsername = username.trim().toLowerCase();
+  try {
+    const res = await fetch(
+      `https://api.github.com/repos/${cleanUsername}/${repoName}/readme`,
+      { headers: getHeaders(), next: { revalidate: 3600 } }
+    );
+    if (!res.ok) return "";
+
+    const data = await res.json();
+    if (data.content && data.encoding === "base64") {
+      const decoded = Buffer.from(data.content, "base64").toString("utf-8");
+      return cleanMarkdown(decoded).substring(0, 450);
+    }
+    return "";
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Utility: Strips Markdown formatting, badges, and code blocks for clean text input
+ */
+function cleanMarkdown(md: string): string {
+  return md
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\[!\[.*?\]\(.*?\)\]\(.*?\)/g, " ")
+    .replace(/!\[.*?\]\(.*?\)/g, " ")
+    .replace(/\[(.*?)\]\(.*?\)/g, "$1")
+    .replace(/^#+\s+/gm, "")
+    .replace(/[*_~=]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * 7. Calculate real language breakdown from ranked projects
  */
 export function getTopLanguages(projects: RankedProject[]) {
   const map: Record<string, number> = {};
   for (const p of projects) {
-    if (p.language) {
+    if (p.language && p.language !== "Code") {
       map[p.language] = (map[p.language] || 0) + 1;
     }
   }
@@ -296,120 +373,4 @@ export function getTopLanguages(projects: RankedProject[]) {
       percentage: Math.round((count / total) * 100),
     }))
     .sort((a, b) => b.count - a.count);
-}
-
-/**
- * Graceful Mock Profile Fallback (ensures zero downtime if rate limited)
- */
-function getMockProfile(username: string): GitHubProfile {
-  return {
-    username,
-    name: username.toUpperCase(),
-    avatar_url: `https://avatars.githubusercontent.com/u/583231?v=4`,
-    bio: "Passionate software engineer building robust distributed systems, high-performance web applications, and developer tools.",
-    location: "San Francisco, CA",
-    blog: `https://${username}.dev`,
-    company: "Open Source Collective",
-    twitter_username: username,
-    public_repos: 48,
-    followers: 1240,
-    following: 180,
-    created_at: "2021-03-15T00:00:00Z",
-    social_accounts: [
-      { provider: "GitHub", url: `https://github.com/${username}` },
-      { provider: "Twitter", url: `https://twitter.com/${username}` },
-      { provider: "Website", url: `https://${username}.dev` },
-    ],
-    issues_closed: 34,
-    pull_requests_merged: 82,
-  };
-}
-
-function getMockRankedProjects(username: string): RankedProject[] {
-  return [
-    {
-      id: 101,
-      name: "turbocache-engine",
-      description: "Ultra-fast distributed caching layer written in TypeScript with in-memory persistence.",
-      html_url: `https://github.com/${username}/turbocache-engine`,
-      homepage: "https://turbocache.dev",
-      stargazers_count: 342,
-      forks_count: 58,
-      language: "TypeScript",
-      topics: ["cache", "nextjs", "performance", "redis"],
-      is_pinned: true,
-      score: 1142,
-      updated_at: new Date().toISOString(),
-    },
-    {
-      id: 102,
-      name: "neo-ui-kit",
-      description: "Neo-brutalist accessible React component library built with Tailwind CSS and Framer Motion.",
-      html_url: `https://github.com/${username}/neo-ui-kit`,
-      homepage: "https://neo-ui.dev",
-      stargazers_count: 285,
-      forks_count: 41,
-      language: "TypeScript",
-      topics: ["ui", "tailwind", "react", "components"],
-      is_pinned: true,
-      score: 955,
-      updated_at: new Date().toISOString(),
-    },
-    {
-      id: 103,
-      name: "git-resume-ai",
-      description: "Automated developer resume generator transforming GitHub commits into executive summaries.",
-      html_url: `https://github.com/${username}/git-resume-ai`,
-      homepage: "https://git-resume.dev",
-      stargazers_count: 198,
-      forks_count: 27,
-      language: "TypeScript",
-      topics: ["ai", "resume", "github", "portfolio"],
-      is_pinned: false,
-      score: 648,
-      updated_at: new Date().toISOString(),
-    },
-    {
-      id: 104,
-      name: "hyper-route",
-      description: "Lightweight zero-dependency router with type-safe URL params and edge runtime support.",
-      html_url: `https://github.com/${username}/hyper-route`,
-      homepage: null,
-      stargazers_count: 142,
-      forks_count: 19,
-      language: "Rust",
-      topics: ["rust", "wasm", "routing"],
-      is_pinned: false,
-      score: 464,
-      updated_at: new Date().toISOString(),
-    },
-    {
-      id: 105,
-      name: "cli-matrix-monitor",
-      description: "Terminal status dashboard for server clusters and container metrics with ASCII charts.",
-      html_url: `https://github.com/${username}/cli-matrix-monitor`,
-      homepage: null,
-      stargazers_count: 89,
-      forks_count: 12,
-      language: "Go",
-      topics: ["cli", "golang", "terminal", "monitoring"],
-      is_pinned: false,
-      score: 291,
-      updated_at: new Date().toISOString(),
-    },
-    {
-      id: 106,
-      name: "dev-insights-sdk",
-      description: "Analytics library for tracking developer productivity and code commit patterns.",
-      html_url: `https://github.com/${username}/dev-insights-sdk`,
-      homepage: "https://insights.dev",
-      stargazers_count: 73,
-      forks_count: 8,
-      language: "Python",
-      topics: ["analytics", "python", "developer-tools"],
-      is_pinned: false,
-      score: 235,
-      updated_at: new Date().toISOString(),
-    },
-  ];
 }

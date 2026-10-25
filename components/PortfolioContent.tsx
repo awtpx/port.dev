@@ -110,32 +110,46 @@ export function PortfolioContent({
           </p>
         </div>
 
-        {/* PRs Merged & Issues Closed Metric Badges */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
-          <div className="flex items-center gap-4 p-4 rounded-xl border-2 border-black bg-white">
-            <div className="w-12 h-12 rounded-xl bg-[#DBEAFE] border-2 border-black flex items-center justify-center shrink-0">
-              <GitPullRequest className="w-6 h-6 text-[#2563EB]" />
+        {/* Real Verified GitHub Metrics: PRs, Issues, and Annual Contributions */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6">
+          <div className="flex items-center gap-3.5 p-4 rounded-xl border-2 border-black bg-white">
+            <div className="w-11 h-11 rounded-xl bg-[#DBEAFE] border-2 border-black flex items-center justify-center shrink-0">
+              <GitPullRequest className="w-5 h-5 text-[#2563EB]" />
             </div>
             <div>
               <div className="text-2xl font-black text-[#0F172A]">
-                {profile.pull_requests_merged}+
+                {profile.pull_requests_merged}
               </div>
-              <div className="text-xs font-bold text-neutral-600">
-                Pull Requests Merged
+              <div className="text-[11px] font-bold text-neutral-600">
+                Merged Pull Requests
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-4 p-4 rounded-xl border-2 border-black bg-white">
-            <div className="w-12 h-12 rounded-xl bg-[#2563EB] border-2 border-black flex items-center justify-center shrink-0">
-              <CheckCircle2 className="w-6 h-6 text-white" />
+          <div className="flex items-center gap-3.5 p-4 rounded-xl border-2 border-black bg-white">
+            <div className="w-11 h-11 rounded-xl bg-[#2563EB] border-2 border-black flex items-center justify-center shrink-0">
+              <CheckCircle2 className="w-5 h-5 text-white" />
             </div>
             <div>
               <div className="text-2xl font-black text-[#0F172A]">
-                {profile.issues_closed}+
+                {profile.issues_closed}
               </div>
-              <div className="text-xs font-bold text-neutral-600">
-                Closed Issues &amp; Bug Fixes
+              <div className="text-[11px] font-bold text-neutral-600">
+                Closed Issues
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3.5 p-4 rounded-xl border-2 border-black bg-white">
+            <div className="w-11 h-11 rounded-xl bg-[#DBEAFE] border-2 border-black flex items-center justify-center shrink-0">
+              <Activity className="w-5 h-5 text-[#2563EB]" />
+            </div>
+            <div>
+              <div className="text-2xl font-black text-[#0F172A]">
+                {profile.annual_contributions}
+              </div>
+              <div className="text-[11px] font-bold text-neutral-600">
+                Annual Contributions
               </div>
             </div>
           </div>
