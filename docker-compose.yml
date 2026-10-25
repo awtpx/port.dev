@@ -1,0 +1,25 @@
+version: "3.8"
+
+services:
+  port-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: port-dev:latest
+    container_name: port-dev
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      - NEXT_PUBLIC_BASE_URL=${NEXT_PUBLIC_BASE_URL:-http://129.121.169.195:3000}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
