@@ -1,0 +1,123 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-main: #F8FAFC;
+    --accent-blue: #2563EB;
+    --accent-blue-hover: #1D4ED8;
+    --secondary-blue: #DBEAFE;
+    --secondary-blue-light: #EFF6FF;
+    --dark-1: #0F172A;
+    --dark-2: #1E293B;
+    --dark-3: #334155;
+  }
+
+  body {
+    background-color: var(--bg-main);
+    color: var(--dark-1);
+    font-family: var(--font-dm-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+}
+
+/* Neo-brutalist custom helper classes */
+.neo-card {
+  border: 2px solid #111111;
+  border-bottom: 5px solid #111111;
+  border-radius: 1rem;
+  background-color: #ffffff;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.neo-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 24px -6px rgba(0, 0, 0, 0.12);
+}
+
+.neo-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background-color: #2563EB;
+  color: #FFFFFF;
+  font-weight: 700;
+  border: 2px solid #111111;
+  border-bottom: 4px solid #111111;
+  border-radius: 0.75rem;
+  padding: 0.625rem 1.25rem;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+  user-select: none;
+}
+
+.neo-btn-primary:hover {
+  background-color: #1D4ED8;
+  transform: translateY(-1px);
+}
+
+.neo-btn-primary:active {
+  transform: translateY(2px);
+  border-bottom-width: 2px;
+}
+
+.neo-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background-color: #FFFFFF;
+  color: #111111;
+  font-weight: 700;
+  border: 2px solid #111111;
+  border-bottom: 4px solid #111111;
+  border-radius: 0.75rem;
+  padding: 0.625rem 1.25rem;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+  user-select: none;
+}
+
+.neo-btn-secondary:hover {
+  background-color: #F1F5F9;
+  transform: translateY(-1px);
+}
+
+.neo-btn-secondary:active {
+  transform: translateY(2px);
+  border-bottom-width: 2px;
+}
+
+.neo-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  border: 1.5px solid #111111;
+  border-bottom: 3px solid #111111;
+  border-radius: 9999px;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  background-color: #FFFFFF;
+  color: #111111;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #F1F5F9;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
