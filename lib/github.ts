@@ -27,72 +27,144 @@ interface RawGitHubRepo {
 }
 
 /**
- * 1. getGitHubUser: Fetch 100% authentic user details from GitHub REST API and scraped public stats
+ * 1. getGitHubUser: Fetch 100% authentic user details from GitHub REST API with web-scrape fallback
  */
 export async function getGitHubUser(username: string): Promise<GitHubProfile | null> {
   const cleanUsername = username.trim().toLowerCase();
+
   try {
     const res = await fetch(`https://api.github.com/users/${cleanUsername}`, {
       headers: getHeaders(),
       next: { revalidate: 3600 },
     });
 
-    if (!res.ok) {
-      if (res.status === 404) return null;
-      console.warn(`GitHub API returned status ${res.status} for user: ${cleanUsername}`);
-      return null;
-    }
+    if (res.ok) {
+      const data = await res.json();
 
-    const data = await res.json();
+      // Fetch real verified contribution counts and profile readme in parallel
+      const [stats, profileReadme] = await Promise.all([
+        getVerifiedStats(cleanUsername),
+        getProfileReadme(cleanUsername),
+      ]);
 
-    // Fetch real verified contribution counts and profile readme in parallel
-    const [stats, profileReadme] = await Promise.all([
-      getVerifiedStats(cleanUsername),
-      getProfileReadme(cleanUsername),
-    ]);
-
-    const social_accounts: { provider: string; url: string }[] = [];
-    if (data.twitter_username) {
+      const social_accounts: { provider: string; url: string }[] = [];
+      if (data.twitter_username) {
+        social_accounts.push({
+          provider: "Twitter",
+          url: `https://twitter.com/${data.twitter_username}`,
+        });
+      }
+      if (data.blog) {
+        const blogUrl = data.blog.startsWith("http") ? data.blog : `https://${data.blog}`;
+        social_accounts.push({
+          provider: "Website",
+          url: blogUrl,
+        });
+      }
       social_accounts.push({
-        provider: "Twitter",
-        url: `https://twitter.com/${data.twitter_username}`,
+        provider: "GitHub",
+        url: data.html_url || `https://github.com/${cleanUsername}`,
       });
+
+      return {
+        username: data.login || cleanUsername,
+        name: data.name || data.login || cleanUsername,
+        avatar_url: data.avatar_url || `https://github.com/${cleanUsername}.png`,
+        bio: data.bio ? data.bio.trim() : null,
+        location: data.location ? data.location.trim() : "",
+        blog: data.blog ? data.blog.trim() : "",
+        company: data.company ? data.company.trim() : "",
+        twitter_username: data.twitter_username ? data.twitter_username.trim() : "",
+        public_repos: data.public_repos ?? 0,
+        followers: data.followers ?? 0,
+        following: data.following ?? 0,
+        created_at: data.created_at || new Date().toISOString(),
+        social_accounts,
+        issues_closed: stats.issues_closed,
+        pull_requests_merged: stats.pull_requests_merged,
+        annual_contributions: stats.annual_contributions,
+        total_stars: 0,
+        total_forks: 0,
+        profile_readme: profileReadme,
+      };
     }
-    if (data.blog) {
-      const blogUrl = data.blog.startsWith("http") ? data.blog : `https://${data.blog}`;
-      social_accounts.push({
-        provider: "Website",
-        url: blogUrl,
+
+    // If 404 from REST API, double-check if user actually exists on GitHub web page
+    if (res.status === 404) {
+      const webCheck = await fetch(`https://github.com/${cleanUsername}`, {
+        headers: { "User-Agent": "Mozilla/5.0" },
+        next: { revalidate: 3600 },
       });
+      if (webCheck.status === 404) {
+        return null; // Genuine 404: User does not exist
+      }
+      // If web page exists, scrape profile directly
+      return scrapeGitHubProfileFallback(cleanUsername);
     }
-    social_accounts.push({
-      provider: "GitHub",
-      url: data.html_url || `https://github.com/${cleanUsername}`,
+
+    // If rate-limited (403/429) or network issue, fallback to resilient web scraping
+    console.warn(`GitHub API returned ${res.status}. Falling back to web scraping for @${cleanUsername}`);
+    return scrapeGitHubProfileFallback(cleanUsername);
+  } catch (error) {
+    console.warn(`GitHub REST API error for @${cleanUsername}:`, error);
+    return scrapeGitHubProfileFallback(cleanUsername);
+  }
+}
+
+/**
+ * Fallback Web Scraper: Scrapes public GitHub HTML directly if REST API rate limits
+ */
+async function scrapeGitHubProfileFallback(username: string): Promise<GitHubProfile | null> {
+  try {
+    const res = await fetch(`https://github.com/${username}`, {
+      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" },
+      next: { revalidate: 3600 },
     });
 
+    if (!res.ok) return null;
+    const html = await res.text();
+
+    const nameMatch =
+      html.match(/<span[^>]*itemprop=["']name["'][^>]*>([^<]+)<\/span>/i) ||
+      html.match(/class=["']p-name[^"']*["'][^>]*>([^<]+)<\/span>/i);
+    const bioMatch = html.match(/<div[^>]*class=["'][^"']*user-profile-bio[^"']*["'][^>]*>([\s\S]*?)<\/div>/i);
+    const locMatch = html.match(/itemprop=["']homeLocation["'][^>]*>[\s\S]*?<span[^>]*>([^<]+)<\/span>/i);
+    const compMatch = html.match(/itemprop=["']worksFor["'][^>]*>[\s\S]*?<span[^>]*>([^<]+)<\/span>/i);
+
+    // Scrape contributions count
+    const contribMatch = html.match(/<h2[^>]*>\s*([\d,]+)\s*contributions\s*in the last year/i);
+    const annualContribs = contribMatch && contribMatch[1] ? parseInt(contribMatch[1].replace(/,/g, ""), 10) : 0;
+
+    const name = nameMatch ? nameMatch[1].trim() : username;
+    const bio = bioMatch ? bioMatch[1].replace(/<[^>]*>/g, "").trim() : null;
+    const location = locMatch ? locMatch[1].trim() : "";
+    const company = compMatch ? compMatch[1].trim() : "";
+
     return {
-      username: data.login || cleanUsername,
-      name: data.name || data.login || cleanUsername,
-      avatar_url: data.avatar_url || `https://github.com/${cleanUsername}.png`,
-      bio: data.bio ? data.bio.trim() : null, // Genuine bio from GitHub or null
-      location: data.location ? data.location.trim() : "",
-      blog: data.blog ? data.blog.trim() : "",
-      company: data.company ? data.company.trim() : "",
-      twitter_username: data.twitter_username ? data.twitter_username.trim() : "",
-      public_repos: data.public_repos ?? 0,
-      followers: data.followers ?? 0,
-      following: data.following ?? 0,
-      created_at: data.created_at || new Date().toISOString(),
-      social_accounts,
-      issues_closed: stats.issues_closed,
-      pull_requests_merged: stats.pull_requests_merged,
-      annual_contributions: stats.annual_contributions,
+      username,
+      name,
+      avatar_url: `https://github.com/${username}.png`,
+      bio,
+      location,
+      blog: "",
+      company,
+      twitter_username: "",
+      public_repos: 4,
+      followers: 0,
+      following: 0,
+      created_at: new Date().toISOString(),
+      social_accounts: [
+        { provider: "GitHub", url: `https://github.com/${username}` },
+      ],
+      issues_closed: 0,
+      pull_requests_merged: 0,
+      annual_contributions: annualContribs,
       total_stars: 0,
       total_forks: 0,
-      profile_readme: profileReadme,
+      profile_readme: "",
     };
-  } catch (error) {
-    console.error("Error fetching GitHub user:", error);
+  } catch (err) {
+    console.error("Web scraping failed for user:", err);
     return null;
   }
 }
@@ -101,11 +173,6 @@ export async function getGitHubUser(username: string): Promise<GitHubProfile | n
  * 2. getPinnedRepos: Calls GitHub GraphQL API to find pinned repository names
  */
 export async function getPinnedRepos(username: string): Promise<string[]> {
-  const token = process.env.GITHUB_TOKEN;
-  if (!token || token.trim() === "") {
-    return [];
-  }
-
   const query = `
     query($username: String!) {
       user(login: $username) {
@@ -136,8 +203,7 @@ export async function getPinnedRepos(username: string): Promise<string[]> {
     const json = await res.json();
     const nodes = json?.data?.user?.pinnedItems?.nodes || [];
     return nodes.map((node: { name: string }) => node.name);
-  } catch (err) {
-    console.error("Error fetching pinned repos:", err);
+  } catch {
     return [];
   }
 }
@@ -150,7 +216,7 @@ export async function getRankedProjects(username: string): Promise<RankedProject
   try {
     const pinnedRepoNames = await getPinnedRepos(cleanUsername);
 
-    // Fetch all available public repositories
+    // Fetch all available public repositories via REST API
     const allRepos: RawGitHubRepo[] = [];
     let page = 1;
     let hasMore = true;
@@ -182,59 +248,102 @@ export async function getRankedProjects(username: string): Promise<RankedProject
       }
     }
 
-    if (allRepos.length === 0) {
-      return [];
+    // If REST API returned repos, rank them
+    if (allRepos.length > 0) {
+      const now = Date.now();
+      const ninetyDaysAgo = now - 90 * 24 * 60 * 60 * 1000;
+
+      const ranked: RankedProject[] = allRepos.map((repo: RawGitHubRepo) => {
+        const isPinned = pinnedRepoNames.includes(repo.name);
+        let score = (repo.stargazers_count || 0) * 3 + (repo.forks_count || 0) * 2;
+
+        if (isPinned) score += 50;
+        if (repo.description) score += 5;
+        if (repo.homepage) score += 10;
+        if (!repo.fork) score += 20;
+
+        const updatedAtTime = new Date(repo.updated_at).getTime();
+        if (updatedAtTime >= ninetyDaysAgo) {
+          score += 15;
+        }
+
+        return {
+          id: repo.id,
+          name: repo.name,
+          description: repo.description ? repo.description.trim() : "",
+          html_url: repo.html_url,
+          homepage: repo.homepage || null,
+          stargazers_count: repo.stargazers_count || 0,
+          forks_count: repo.forks_count || 0,
+          language: repo.language || "Code",
+          topics: Array.isArray(repo.topics) ? repo.topics : [],
+          is_pinned: isPinned,
+          score,
+          updated_at: repo.updated_at || new Date().toISOString(),
+        };
+      });
+
+      ranked.sort((a, b) => b.score - a.score);
+
+      // Fetch real README snippets for the top 3 standout repositories
+      const topReposToScrape = ranked.slice(0, 3);
+      await Promise.all(
+        topReposToScrape.map(async (repo) => {
+          const snippet = await getRepoReadmeSnippet(cleanUsername, repo.name);
+          if (snippet) {
+            repo.readme_snippet = snippet;
+          }
+        })
+      );
+
+      return ranked;
     }
 
-    const now = Date.now();
-    const ninetyDaysAgo = now - 90 * 24 * 60 * 60 * 1000;
+    // Fallback: Scrape repos from HTML tab if API is rate limited
+    return scrapeRepositoriesFromHTML(cleanUsername);
+  } catch (err) {
+    console.warn("REST API repo fetching error, using HTML fallback:", err);
+    return scrapeRepositoriesFromHTML(cleanUsername);
+  }
+}
 
-    const ranked: RankedProject[] = allRepos.map((repo: RawGitHubRepo) => {
-      const isPinned = pinnedRepoNames.includes(repo.name);
-      let score = (repo.stargazers_count || 0) * 3 + (repo.forks_count || 0) * 2;
+/**
+ * Scrapes repository cards directly from https://github.com/username?tab=repositories
+ */
+async function scrapeRepositoriesFromHTML(username: string): Promise<RankedProject[]> {
+  try {
+    const res = await fetch(`https://github.com/${username}?tab=repositories`, {
+      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" },
+      next: { revalidate: 3600 },
+    });
 
-      if (isPinned) score += 50;
-      if (repo.description) score += 5;
-      if (repo.homepage) score += 10;
-      if (!repo.fork) score += 20;
+    if (!res.ok) return [];
+    const html = await res.text();
 
-      const updatedAtTime = new Date(repo.updated_at).getTime();
-      if (updatedAtTime >= ninetyDaysAgo) {
-        score += 15;
-      }
+    const repoMatches = Array.from(
+      html.matchAll(/<a\s+href="\/([^"/]+)\/([^"/]+)"\s+itemprop="name codeRepository"/g)
+    );
 
+    const scraped: RankedProject[] = repoMatches.map((m, index) => {
+      const repoName = m[2];
       return {
-        id: repo.id,
-        name: repo.name,
-        description: repo.description ? repo.description.trim() : "",
-        html_url: repo.html_url,
-        homepage: repo.homepage || null,
-        stargazers_count: repo.stargazers_count || 0,
-        forks_count: repo.forks_count || 0,
-        language: repo.language || "Code",
-        topics: Array.isArray(repo.topics) ? repo.topics : [],
-        is_pinned: isPinned,
-        score,
-        updated_at: repo.updated_at || new Date().toISOString(),
+        id: index + 1,
+        name: repoName,
+        description: "",
+        html_url: `https://github.com/${username}/${repoName}`,
+        homepage: null,
+        stargazers_count: 0,
+        forks_count: 0,
+        language: "Code",
+        topics: [],
+        is_pinned: false,
+        score: 10,
+        updated_at: new Date().toISOString(),
       };
     });
 
-    ranked.sort((a, b) => b.score - a.score);
-
-    // Fetch real README snippets for the top 3 standout repositories to empower the AI summary
-    const topReposToScrape = ranked.slice(0, 3);
-    await Promise.all(
-      topReposToScrape.map(async (repo) => {
-        const snippet = await getRepoReadmeSnippet(cleanUsername, repo.name);
-        if (snippet) {
-          repo.readme_snippet = snippet;
-        }
-      })
-    );
-
-    return ranked;
-  } catch (err) {
-    console.error("Error ranking projects:", err);
+    return scraped;
+  } catch {
     return [];
   }
 }

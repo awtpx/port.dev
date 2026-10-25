@@ -6,7 +6,7 @@ function getGroqClient() {
   if (!apiKey || apiKey.trim() === "") {
     return null;
   }
-  return new Groq({ apiKey });
+  return new Groq({ apiKey: apiKey.trim() });
 }
 
 /**
